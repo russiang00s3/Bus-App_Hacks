@@ -47,7 +47,7 @@
 
   /* Map */
   #map { flex: 1; width: 100%; z-index: 1; }
-  .leaflet-tile { filter: brightness(0.75) saturate(0.6) hue-rotate(200deg); }
+  .leaflet-tile { filter: brightness(0.7) saturate(0.5) hue-rotate(260deg); }
   .leaflet-container { background: var(--bg); }
   .leaflet-control-zoom { display: none; }
   .leaflet-control-attribution { display: none; }
@@ -227,7 +227,7 @@
       <!-- Address panel -->
       <div class="panel" id="panel-addr">
         <div class="addr-input-wrap">
-          <input class="addr-input" id="addr-input" type="text" placeholder="Type any address, e.g. 496 Arleta Ave…" autocomplete="off" oninput="onAddrInput()" />
+          <input class="addr-input" id="addr-input" type="text" placeholder="Search school, city, or landmark…" autocomplete="off" oninput="onAddrInput()" />
           <button class="addr-clear" id="addr-clear" onclick="clearAddr()">✕</button>
         </div>
         <div class="suggestions" id="suggestions"></div>
@@ -243,24 +243,6 @@
       </div>
 
     </div>
-  </div>
-
-  <!-- file:// splash -->
-  <div id="file-splash" style="display:none;position:absolute;inset:0;z-index:9999;background:rgba(18,10,30,0.97);flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;">
-    <div style="font-size:36px;margin-bottom:16px;">🚌</div>
-    <div style="font-size:20px;font-weight:600;color:#f5f0ff;margin-bottom:8px;">One more step!</div>
-    <div style="font-size:14px;color:#7c6b9a;line-height:1.7;margin-bottom:28px;">The map needs to run over HTTP.<br>Double-clicking the file won't work — use the launcher instead.</div>
-    <div style="background:#251535;border:0.5px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px 24px;width:100%;max-width:340px;text-align:left;margin-bottom:20px;">
-      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:#a855f7;margin-bottom:10px;">Mac / Linux</div>
-      <div style="font-family:'DM Mono',monospace;font-size:13px;color:#f5f0ff;background:#120a1e;padding:10px 12px;border-radius:8px;">double-click <b>launch-svcte.sh</b></div>
-      <div style="font-size:11px;color:#7c6b9a;margin-top:6px;">Or: <code style="font-size:11px;">python3 -m http.server 8080</code></div>
-    </div>
-    <div style="background:#251535;border:0.5px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px 24px;width:100%;max-width:340px;text-align:left;margin-bottom:24px;">
-      <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:#f97316;margin-bottom:10px;">Windows</div>
-      <div style="font-family:'DM Mono',monospace;font-size:13px;color:#f5f0ff;background:#120a1e;padding:10px 12px;border-radius:8px;">double-click <b>launch-svcte.bat</b></div>
-      <div style="font-size:11px;color:#7c6b9a;margin-top:6px;">Requires Python installed</div>
-    </div>
-    <div style="font-size:12px;color:#7c6b9a;">Keep all files in the same folder.<br>The launcher opens your browser automatically.</div>
   </div>
 
   <!-- Detail modal -->
@@ -317,7 +299,7 @@ let map, markers=[], userMarker=null, addrMarker=null, rankedStops=[], addrRanke
 
 /* ── MAP ── */
 map = L.map('map',{center:[37.32,-121.89],zoom:11,zoomControl:false,attributionControl:false});
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:'abc'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
 const svcteIcon = L.divIcon({className:'',html:'<div class="svcte-marker">🏫</div>',iconSize:[40,40],iconAnchor:[20,20]});
 L.marker([SVCTE.lat,SVCTE.lng],{icon:svcteIcon}).addTo(map)
   .bindPopup('<div class="popup-name">SVCTE Campus</div><div class="popup-row"><span>760 Hillsdale Ave, San Jose</span></div>');
@@ -365,9 +347,11 @@ function switchTab(t){
 switchTab('gps');
 setMode(mode);
 
-// Show splash if opened as file:// — map tiles and GPS both need http
+// Warn if running as file:// — geolocation requires http/https
 if(location.protocol==='file:'){
-  document.getElementById('file-splash').style.display='flex';
+  document.getElementById('gps-status').innerHTML=
+    '<b>Location unavailable on local files.</b><br>'+
+    'Open this file via a web server, or use the <b>Search address</b> tab — it works offline!';
 }
 
 /* ── HELPERS ── */
@@ -412,17 +396,260 @@ function findClosest(){
 }
 
 /* ── ADDRESS SEARCH ── */
-/* ── ADDRESS SEARCH ── */
-// Uses US Census Bureau geocoder (free, no key) with Nominatim fallback
-let addrDebounce=null, _suggestions=[];
+// Built-in geocoder — no external API needed. Matches school names + South Bay cities/landmarks.
+const GEOCODE_DB = [
+  // Schools (exact matches)
+  {name:"Andrew Hill High School",lat:37.2922,lng:-121.8312},
+  {name:"Apollo High School",lat:37.3313,lng:-121.8317},
+  {name:"Branham High School",lat:37.2541,lng:-121.8997},
+  {name:"Broadway High School",lat:37.2615,lng:-121.8798},
+  {name:"Calaveras Hills High School",lat:37.4369,lng:-121.8828},
+  {name:"Del Mar High School",lat:37.304,lng:-121.9296},
+  {name:"Evergreen Valley High School",lat:37.3243,lng:-121.7788},
+  {name:"Foothill High School",lat:37.3688,lng:-121.8389},
+  {name:"Gunderson High School",lat:37.2589,lng:-121.8551},
+  {name:"Independence High School",lat:37.3684,lng:-121.8567},
+  {name:"James Lick High School",lat:37.3675,lng:-121.83},
+  {name:"Leigh High School",lat:37.242,lng:-121.9215},
+  {name:"Leland High School",lat:37.2172,lng:-121.8444},
+  {name:"Lincoln High School",lat:37.3289,lng:-121.9241},
+  {name:"Los Gatos High School",lat:37.2225,lng:-121.9759},
+  {name:"Milpitas High School",lat:37.4509,lng:-121.9005},
+  {name:"Mt Pleasant High School",lat:37.3465,lng:-121.8081},
+  {name:"Oak Grove High School",lat:37.2522,lng:-121.8199},
+  {name:"Overfelt High School",lat:37.331,lng:-121.8293},
+  {name:"Piedmont Hills High School",lat:37.402,lng:-121.8492},
+  {name:"Pioneer High School",lat:37.2474,lng:-121.8829},
+  {name:"San Jose High School",lat:37.35,lng:-121.872},
+  {name:"Santa Clara High School",lat:37.3455,lng:-121.982},
+  {name:"Saratoga High School",lat:37.2664,lng:-122.0296},
+  {name:"Silver Creek High School",lat:37.3035,lng:-121.8062},
+  {name:"Westmont High School",lat:37.2709,lng:-121.9857},
+  {name:"Wilcox High School",lat:37.3663,lng:-121.9862},
+  {name:"Willow Glen High School",lat:37.2908,lng:-121.8962},
+  {name:"Wilson High School",lat:37.3456,lng:-121.9555},
+  // Cities / neighbourhoods
+  {name:"Downtown San Jose",lat:37.3382,lng:-121.8863},
+  {name:"North San Jose",lat:37.3876,lng:-121.9018},
+  {name:"South San Jose",lat:37.249,lng:-121.853},
+  {name:"East San Jose",lat:37.342,lng:-121.834},
+  {name:"West San Jose",lat:37.317,lng:-121.963},
+  {name:"Willow Glen",lat:37.296,lng:-121.899},
+  {name:"Evergreen",lat:37.308,lng:-121.786},
+  {name:"Berryessa",lat:37.389,lng:-121.857},
+  {name:"Almaden Valley",lat:37.245,lng:-121.866},
+  {name:"Cambrian Park",lat:37.259,lng:-121.913},
+  {name:"Blossom Hill",lat:37.252,lng:-121.861},
+  {name:"Silver Creek",lat:37.303,lng:-121.806},
+  {name:"Alum Rock",lat:37.366,lng:-121.825},
+  {name:"Japantown San Jose",lat:37.349,lng:-121.9},
+  {name:"Santa Clara",lat:37.3541,lng:-121.9552},
+  {name:"Milpitas",lat:37.4323,lng:-121.8996},
+  {name:"Los Gatos",lat:37.2358,lng:-121.9624},
+  {name:"Saratoga",lat:37.2638,lng:-122.023},
+  {name:"Campbell",lat:37.2872,lng:-121.9499},
+  {name:"Cupertino",lat:37.3229,lng:-122.0322},
+  {name:"Sunnyvale",lat:37.3688,lng:-122.0363},
+  {name:"Morgan Hill",lat:37.1305,lng:-121.6544},
+  {name:"Gilroy",lat:37.0058,lng:-121.5683},
+  // Landmarks / malls
+  {name:"Eastridge Mall",lat:37.326,lng:-121.818},
+  {name:"Westfield Valley Fair",lat:37.326,lng:-121.948},
+  {name:"Santana Row",lat:37.321,lng:-121.949},
+  {name:"Great Mall Milpitas",lat:37.414,lng:-121.899},
+  {name:"Oakridge Mall",lat:37.252,lng:-121.893},
+  {name:"Almaden Lake Park",lat:37.253,lng:-121.874},
+  {name:"Kelley Park",lat:37.317,lng:-121.864},
+  {name:"Alum Rock Park",lat:37.381,lng:-121.798},
+  {name:"San Jose Airport",lat:37.3626,lng:-121.9291},
+  {name:"SAP Center",lat:37.3329,lng:-121.9011},
+  {name:"PayPal Park",lat:37.351,lng:-121.926},
+  {name:"San Jose State University",lat:37.3352,lng:-121.8811},
+  {name:"De Anza College",lat:37.3196,lng:-122.0457},
+  {name:"Foothill College",lat:37.36,lng:-122.0418},
+  {name:"Santa Clara University",lat:37.3496,lng:-121.9390},
+  {name:"SVCTE",lat:37.2781,lng:-121.8661},
+  // Streets — comprehensive coverage within 4 miles of every bus stop
+  {name:"Aborn Road",lat:37.318,lng:-121.803,street:true,numStart:100,numEnd:5000,axis:"lng",span:0.08},
+  {name:"Abel Street",lat:37.432,lng:-121.906,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.03},
+  {name:"Agnew Road",lat:37.382,lng:-121.965,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Almaden Expressway",lat:37.265,lng:-121.878,street:true,numStart:100,numEnd:6000,axis:"lat",span:0.09},
+  {name:"Almaden Road",lat:37.232,lng:-121.867,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Alum Rock Avenue",lat:37.366,lng:-121.848,street:true,numStart:100,numEnd:5800,axis:"lng",span:0.09},
+  {name:"Arleta Avenue",lat:37.337,lng:-121.853,street:true,numStart:100,numEnd:1200,axis:"lat",span:0.025},
+  {name:"Bailey Avenue",lat:37.217,lng:-121.852,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Barber Lane",lat:37.416,lng:-121.907,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Bascom Avenue",lat:37.287,lng:-121.936,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.07},
+  {name:"Bellomy Street",lat:37.352,lng:-121.965,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Benton Street",lat:37.346,lng:-121.982,street:true,numStart:100,numEnd:3500,axis:"lng",span:0.06},
+  {name:"Bernal Road",lat:37.226,lng:-121.86,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Berryessa Road",lat:37.393,lng:-121.862,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.05},
+  {name:"Big Basin Way",lat:37.265,lng:-122.023,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.03},
+  {name:"Bird Avenue",lat:37.309,lng:-121.901,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Blossom Avenue",lat:37.264,lng:-121.948,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Blossom Hill Road",lat:37.252,lng:-121.862,street:true,numStart:100,numEnd:5500,axis:"lng",span:0.11},
+  {name:"Blossom Valley Road",lat:37.252,lng:-121.888,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Bollinger Road",lat:37.307,lng:-121.988,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"Branham Lane",lat:37.254,lng:-121.878,street:true,numStart:100,numEnd:5000,axis:"lng",span:0.09},
+  {name:"Brokaw Road",lat:37.393,lng:-121.918,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"Budd Avenue",lat:37.294,lng:-121.942,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Cabrillo Avenue",lat:37.352,lng:-121.956,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Calaveras Boulevard",lat:37.435,lng:-121.891,street:true,numStart:100,numEnd:3500,axis:"lng",span:0.07},
+  {name:"Camden Avenue",lat:37.255,lng:-121.893,street:true,numStart:100,numEnd:5000,axis:"lat",span:0.06},
+  {name:"Capital Expressway",lat:37.316,lng:-121.832,street:true,numStart:100,numEnd:5000,axis:"lat",span:0.07},
+  {name:"Capitol Avenue",lat:37.318,lng:-121.869,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"Chaboya Road",lat:37.303,lng:-121.778,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Cherry Avenue",lat:37.278,lng:-121.912,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Chynoweth Avenue",lat:37.234,lng:-121.837,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Civic Center Drive",lat:37.354,lng:-121.956,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Clayton Road",lat:37.319,lng:-121.857,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.04},
+  {name:"Cottle Avenue",lat:37.255,lng:-121.856,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Cottle Road",lat:37.247,lng:-121.852,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.05},
+  {name:"Cox Avenue",lat:37.278,lng:-122.011,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Cropley Avenue",lat:37.404,lng:-121.875,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Cunningham Avenue",lat:37.332,lng:-121.831,street:true,numStart:100,numEnd:3500,axis:"lng",span:0.05},
+  {name:"Curtner Avenue",lat:37.27,lng:-121.887,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"De La Cruz Boulevard",lat:37.374,lng:-121.946,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Dempsey Road",lat:37.455,lng:-121.903,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Dixon Road",lat:37.415,lng:-121.879,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Dorel Drive",lat:37.332,lng:-121.852,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Doyle Road",lat:37.382,lng:-121.865,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Dry Creek Road",lat:37.264,lng:-121.912,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.05},
+  {name:"East Calaveras Boulevard",lat:37.437,lng:-121.879,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"East Santa Clara Street",lat:37.341,lng:-121.873,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"El Camino Real",lat:37.349,lng:-121.978,street:true,numStart:100,numEnd:5000,axis:"lng",span:0.12},
+  {name:"Empire Street",lat:37.345,lng:-121.88,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Escuela Parkway",lat:37.45,lng:-121.901,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Evans Road",lat:37.41,lng:-121.882,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Evergreen Valley Road",lat:37.319,lng:-121.774,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.05},
+  {name:"Flint Avenue",lat:37.329,lng:-121.844,street:true,numStart:100,numEnd:1200,axis:"lat",span:0.02},
+  {name:"Forest Avenue",lat:37.289,lng:-121.964,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Foxworthy Avenue",lat:37.276,lng:-121.889,street:true,numStart:100,numEnd:4000,axis:"lng",span:0.07},
+  {name:"Fruitdale Avenue",lat:37.307,lng:-121.927,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Fruitvale Avenue",lat:37.263,lng:-122.013,street:true,numStart:100,numEnd:2500,axis:"lat",span:0.05},
+  {name:"Glen Brae Drive",lat:37.268,lng:-122.024,street:true,numStart:100,numEnd:1200,axis:"lat",span:0.02},
+  {name:"Hacienda Avenue",lat:37.293,lng:-121.953,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Halcyon Drive",lat:37.364,lng:-121.845,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Hamilton Avenue",lat:37.286,lng:-121.949,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"Hedding Street",lat:37.352,lng:-121.9,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Hellyer Avenue",lat:37.24,lng:-121.82,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Herriman Avenue",lat:37.266,lng:-122.029,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Hillsdale Avenue",lat:37.278,lng:-121.876,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.05},
+  {name:"Holly Drive",lat:37.326,lng:-121.818,street:true,numStart:100,numEnd:1200,axis:"lat",span:0.02},
+  {name:"Homestead Road",lat:37.333,lng:-121.993,street:true,numStart:100,numEnd:5000,axis:"lng",span:0.09},
+  {name:"Hopkins Drive",lat:37.304,lng:-121.879,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.04},
+  {name:"Hostetter Road",lat:37.389,lng:-121.867,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.05},
+  {name:"Jacklin Road",lat:37.428,lng:-121.887,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Jackson Avenue",lat:37.369,lng:-121.862,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+  {name:"Julian Street",lat:37.347,lng:-121.888,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Kammerer Road",lat:37.385,lng:-121.806,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Kenwood Drive",lat:37.393,lng:-121.853,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Keyes Street",lat:37.344,lng:-121.877,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Kiely Boulevard",lat:37.348,lng:-121.972,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"King Road",lat:37.342,lng:-121.845,street:true,numStart:100,numEnd:3500,axis:"lat",span:0.07},
+  {name:"Kooser Road",lat:37.263,lng:-121.876,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Lafayette Street",lat:37.355,lng:-121.944,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Landess Avenue",lat:37.408,lng:-121.888,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.05},
+  {name:"Lark Avenue",lat:37.239,lng:-121.973,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Lawrence Expressway",lat:37.36,lng:-121.993,street:true,numStart:100,numEnd:5000,axis:"lat",span:0.09},
+  {name:"Lean Avenue",lat:37.265,lng:-121.843,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Leigh Avenue",lat:37.27,lng:-121.921,street:true,numStart:100,numEnd:5500,axis:"lat",span:0.06},
+  {name:"Leland Avenue",lat:37.245,lng:-121.881,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Lincoln Avenue",lat:37.302,lng:-121.906,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.07},
+  {name:"Los Gatos Boulevard",lat:37.248,lng:-121.967,street:true,numStart:100,numEnd:2500,axis:"lat",span:0.04},
+  {name:"Lucretia Avenue",lat:37.339,lng:-121.861,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Mabury Road",lat:37.365,lng:-121.853,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Martha Street",lat:37.343,lng:-121.876,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"McClellan Road",lat:37.362,lng:-121.821,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"McKee Road",lat:37.373,lng:-121.849,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"McLaughlin Avenue",lat:37.302,lng:-121.854,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.07},
+  {name:"Meridian Avenue",lat:37.298,lng:-121.921,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.07},
+  {name:"Meridian Road",lat:37.246,lng:-121.898,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Midwick Drive",lat:37.448,lng:-121.898,street:true,numStart:100,numEnd:1200,axis:"lat",span:0.02},
+  {name:"Millbrook Drive",lat:37.405,lng:-121.856,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Milmont Drive",lat:37.439,lng:-121.916,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Minnesota Avenue",lat:37.296,lng:-121.896,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Monroe Street",lat:37.366,lng:-121.986,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.06},
+  {name:"Montague Expressway",lat:37.411,lng:-121.916,street:true,numStart:100,numEnd:5000,axis:"lng",span:0.09},
+  {name:"Monterey Road",lat:37.286,lng:-121.876,street:true,numStart:100,numEnd:6000,axis:"lat",span:0.1},
+  {name:"Montoya Drive",lat:37.247,lng:-121.867,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Moorpark Avenue",lat:37.317,lng:-121.952,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.05},
+  {name:"Morrill Avenue",lat:37.381,lng:-121.852,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.04},
+  {name:"Murillo Avenue",lat:37.318,lng:-121.803,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.03},
+  {name:"Naglee Avenue",lat:37.331,lng:-121.887,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Narvaez Avenue",lat:37.228,lng:-121.855,street:true,numStart:100,numEnd:1200,axis:"lat",span:0.02},
+  {name:"North Capitol Avenue",lat:37.37,lng:-121.868,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.07},
+  {name:"North First Street",lat:37.375,lng:-121.919,street:true,numStart:100,numEnd:5000,axis:"lat",span:0.09},
+  {name:"North White Road",lat:37.37,lng:-121.808,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Norwood Avenue",lat:37.324,lng:-121.826,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Oak Glen Avenue",lat:37.247,lng:-121.854,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Ocala Avenue",lat:37.327,lng:-121.847,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Pala Avenue",lat:37.37,lng:-121.839,street:true,numStart:100,numEnd:1000,axis:"lng",span:0.02},
+  {name:"Park Avenue",lat:37.335,lng:-121.895,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Payne Avenue",lat:37.376,lng:-121.832,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Pearl Avenue",lat:37.276,lng:-121.897,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.05},
+  {name:"Penitencia Creek Road",lat:37.394,lng:-121.843,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Piedmont Hills Drive",lat:37.408,lng:-121.847,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Piedmont Road",lat:37.401,lng:-121.849,street:true,numStart:100,numEnd:2000,axis:"lat",span:0.04},
+  {name:"Pomeroy Avenue",lat:37.362,lng:-121.977,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Prospect Road",lat:37.301,lng:-121.978,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.05},
+  {name:"Pruneridge Avenue",lat:37.357,lng:-121.976,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Quimby Road",lat:37.317,lng:-121.786,street:true,numStart:100,numEnd:4500,axis:"lat",span:0.06},
+  {name:"Quito Road",lat:37.279,lng:-122.003,street:true,numStart:100,numEnd:2500,axis:"lat",span:0.05},
+  {name:"Reed Street",lat:37.332,lng:-121.894,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Ruby Avenue",lat:37.339,lng:-121.857,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"San Fernando Street",lat:37.337,lng:-121.893,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Santa Clara Street",lat:37.349,lng:-121.902,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Santa Cruz Avenue",lat:37.229,lng:-121.977,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Santa Teresa Boulevard",lat:37.237,lng:-121.849,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+  {name:"Saratoga Avenue",lat:37.31,lng:-121.968,street:true,numStart:100,numEnd:5000,axis:"lat",span:0.08},
+  {name:"Saratoga Los Gatos Road",lat:37.262,lng:-122.019,street:true,numStart:100,numEnd:2500,axis:"lng",span:0.04},
+  {name:"Saratoga Sunnyvale Road",lat:37.315,lng:-122.019,street:true,numStart:100,numEnd:4000,axis:"lat",span:0.07},
+  {name:"Scott Boulevard",lat:37.347,lng:-121.977,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+  {name:"Senter Road",lat:37.3,lng:-121.846,street:true,numStart:100,numEnd:3500,axis:"lat",span:0.07},
+  {name:"Shannon Road",lat:37.245,lng:-121.975,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Silver Creek Road",lat:37.303,lng:-121.806,street:true,numStart:100,numEnd:4000,axis:"lng",span:0.07},
+  {name:"Snell Avenue",lat:37.272,lng:-121.839,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+  {name:"South Abel Street",lat:37.415,lng:-121.906,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"South White Road",lat:37.328,lng:-121.808,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+  {name:"Story Road",lat:37.334,lng:-121.855,street:true,numStart:100,numEnd:4000,axis:"lng",span:0.07},
+  {name:"Taylor Street",lat:37.356,lng:-121.901,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Thornwood Drive",lat:37.259,lng:-121.852,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Toyon Avenue",lat:37.384,lng:-121.846,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Trade Zone Boulevard",lat:37.425,lng:-121.909,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Trimble Road",lat:37.4,lng:-121.924,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"Tuers Road",lat:37.271,lng:-121.828,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Tully Road",lat:37.317,lng:-121.845,street:true,numStart:100,numEnd:4000,axis:"lng",span:0.07},
+  {name:"Union Avenue",lat:37.272,lng:-121.897,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+  {name:"University Avenue",lat:37.232,lng:-121.965,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Virginia Avenue",lat:37.338,lng:-121.866,street:true,numStart:100,numEnd:1500,axis:"lat",span:0.03},
+  {name:"Virginia Street",lat:37.332,lng:-121.883,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Walsh Avenue",lat:37.372,lng:-121.979,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Warburton Avenue",lat:37.36,lng:-121.959,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Weller Road",lat:37.443,lng:-121.886,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"West San Carlos Street",lat:37.327,lng:-121.919,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.06},
+  {name:"Westmont Avenue",lat:37.271,lng:-121.986,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"White Road",lat:37.352,lng:-121.808,street:true,numStart:100,numEnd:3500,axis:"lat",span:0.07},
+  {name:"William Street",lat:37.336,lng:-121.88,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Willow Street",lat:37.307,lng:-121.899,street:true,numStart:100,numEnd:2000,axis:"lng",span:0.04},
+  {name:"Winchester Boulevard",lat:37.289,lng:-121.962,street:true,numStart:100,numEnd:5000,axis:"lat",span:0.08},
+  {name:"Winfield Boulevard",lat:37.248,lng:-121.832,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Woodard Road",lat:37.222,lng:-121.843,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.03},
+  {name:"Yerba Buena Road",lat:37.304,lng:-121.762,street:true,numStart:100,numEnd:3000,axis:"lng",span:0.05},
+  {name:"Yosemite Drive",lat:37.436,lng:-121.897,street:true,numStart:100,numEnd:1200,axis:"lng",span:0.02},
+  {name:"Younger Avenue",lat:37.33,lng:-121.874,street:true,numStart:100,numEnd:1500,axis:"lng",span:0.03},
+  {name:"Zanker Road",lat:37.411,lng:-121.921,street:true,numStart:100,numEnd:3000,axis:"lat",span:0.05},
+];
+
+let addrDebounce=null;
 
 function onAddrInput(){
   const v=document.getElementById('addr-input').value.trim();
   document.getElementById('addr-clear').className='addr-clear'+(v?' visible':'');
-  if(!v){hideSuggestions();selectedAddr=null;document.getElementById('addr-search-btn').disabled=true;return;}
+  if(!v){ hideSuggestions(); selectedAddr=null; document.getElementById('addr-search-btn').disabled=true; return; }
   clearTimeout(addrDebounce);
-  if(v.length<4){hideSuggestions();return;}
-  addrDebounce=setTimeout(()=>fetchAddressSuggestions(v),500);
+  if(v.length<2){ hideSuggestions(); return; }
+  addrDebounce=setTimeout(()=>searchGeocodeDB(v),120);
 }
 
 function clearAddr(){
@@ -437,75 +664,55 @@ function clearAddr(){
   if(addrMarker){map.removeLayer(addrMarker);addrMarker=null;}
 }
 
-async function fetchAddressSuggestions(q){
-  // Append San Jose CA if no city mentioned to bias results
-  const query = /san jose|milpitas|saratoga|los gatos|santa clara|campbell|cupertino/i.test(q)
-    ? q : q + ', San Jose CA';
-
-  document.getElementById('addr-status').textContent='Searching...';
-
-  // Try US Census Bureau geocoder first — completely free, no key, very accurate
-  try {
-    const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?'
-      + 'benchmark=2020&format=json&address=' + encodeURIComponent(query);
-    const res = await fetch(url, {signal: AbortSignal.timeout(5000)});
-    const data = await res.json();
-    const matches = (data.result?.addressMatches || []);
-    if(matches.length){
-      const results = matches.slice(0,6).map(m=>({
-        name: m.matchedAddress,
-        lat: parseFloat(m.coordinates.y),
-        lng: parseFloat(m.coordinates.x)
-      }));
-      document.getElementById('addr-status').textContent='';
+function searchGeocodeDB(q){
+  const lower=q.toLowerCase().trim();
+  // Check if query starts with a house number
+  const numMatch=lower.match(/^(\d+)\s+(.+)/);
+  if(numMatch){
+    const num=parseInt(numMatch[1]);
+    const streetQ=numMatch[2].replace(/high school/i,'').trim();
+    // Find matching streets
+    const streets=GEOCODE_DB.filter(p=>p.street&&p.name.toLowerCase().includes(streetQ));
+    if(streets.length){
+      const results=streets.slice(0,6).map(s=>{
+        // Interpolate position along street based on house number
+        const t=Math.max(0,Math.min(1,(num-s.numStart)/(s.numEnd-s.numStart)));
+        const offset=(t-0.5)*s.span;
+        const lat=s.axis==='lat'?s.lat+offset:s.lat;
+        const lng=s.axis==='lng'?s.lng+offset:s.lng;
+        return{name:num+' '+s.name,lat,lng,city:'San Jose area'};
+      });
       showSuggestions(results);
       return;
     }
-  } catch(e){}
-
-  // Fallback: Nominatim (OpenStreetMap) — free, no key needed
-  try {
-    const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=us'
-      + '&q=' + encodeURIComponent(query);
-    const res = await fetch(url, {
-      headers: {'Accept-Language':'en', 'User-Agent':'SVCTEBusApp/1.0'},
-      signal: AbortSignal.timeout(5000)
-    });
-    const data = await res.json();
-    if(data.length){
-      const results = data.map(r=>({
-        name: r.display_name.split(',').slice(0,3).join(','),
-        lat: parseFloat(r.lat),
-        lng: parseFloat(r.lon)
-      }));
-      document.getElementById('addr-status').textContent='';
-      showSuggestions(results);
-      return;
-    }
-  } catch(e){}
-
-  document.getElementById('addr-status').textContent='No results found. Try adding your city name.';
-  hideSuggestions();
+  }
+  // Plain name search (schools, cities, landmarks, streets)
+  const cleaned=lower.replace(/high school/i,'').trim();
+  const results=GEOCODE_DB.filter(p=>p.name.toLowerCase().includes(cleaned)).slice(0,6)
+    .map(p=>({name:p.name,lat:p.lat,lng:p.lng,city:p.street?'Street':'South Bay, CA'}));
+  showSuggestions(results);
 }
 
 function showSuggestions(results){
   const el=document.getElementById('suggestions');
-  if(!results.length){el.className='suggestions';return;}
-  _suggestions=results;
-  el.innerHTML=results.map((r,i)=>`
-    <div class="suggestion-item" onclick="pickSuggestion(${i})">
+  if(!results.length){el.className='suggestions'; return;}
+  document.getElementById('addr-status').textContent='';
+  el.innerHTML=results.map(r=>{
+    const safeName=r.name.replace(/'/g,'&#39;');
+    const sub=r.city||'South Bay, CA';
+    return `<div class="suggestion-item" onclick="pickSuggestion(${r.lat},${r.lng},'${safeName}')">
       <div class="suggestion-name">${r.name}</div>
-    </div>`).join('');
+      <div class="suggestion-sub">${sub}</div>
+    </div>`;
+  }).join('');
   el.className='suggestions open';
 }
 
 function hideSuggestions(){document.getElementById('suggestions').className='suggestions';}
 
-function pickSuggestion(i){
-  const r=_suggestions[i];
-  if(!r) return;
-  selectedAddr={lat:r.lat,lng:r.lng,label:r.name};
-  document.getElementById('addr-input').value=r.name.split(',')[0];
+function pickSuggestion(lat,lng,label){
+  selectedAddr={lat:parseFloat(lat),lng:parseFloat(lng),label};
+  document.getElementById('addr-input').value=label;
   document.getElementById('addr-clear').className='addr-clear visible';
   document.getElementById('addr-search-btn').disabled=false;
   document.getElementById('addr-status').textContent='';
@@ -513,14 +720,16 @@ function pickSuggestion(i){
 }
 
 function searchAddr(){
-  if(!selectedAddr){document.getElementById('addr-status').textContent='Pick an address from the list first.';return;}
+  if(!selectedAddr){ document.getElementById('addr-status').textContent='Pick a location from the list first.'; return; }
   const btn=document.getElementById('addr-search-btn');
   btn.classList.add('loading');
   document.getElementById('addr-status').textContent='';
-  const {lat,lng}=selectedAddr,am=mode==='am';
+  const {lat,lng}=selectedAddr, am=mode==='am';
+
   if(addrMarker) map.removeLayer(addrMarker);
-  const addrHtml=`<div style="background:#f97316;color:#fff;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;padding:4px 8px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.4);max-width:160px;overflow:hidden;text-overflow:ellipsis;">${selectedAddr.label.split(',')[0]}</div>`;
-  addrMarker=L.marker([lat,lng],{icon:L.divIcon({className:'',html:addrHtml,iconSize:[0,0],iconAnchor:[-4,24]}),zIndexOffset:2000}).addTo(map);
+  addrMarker=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class="addr-dot"></div>',iconSize:[16,16],iconAnchor:[8,8]}),zIndexOffset:2000}).addTo(map);
+  addrMarker.bindPopup(`<div class="popup-name">${selectedAddr.label}</div><div class="popup-row"><span>Search origin</span></div>`).openPopup();
+
   addrRankedStops=rankStops(lat,lng,am);
   btn.classList.remove('loading');
   if(!addrRankedStops.length){document.getElementById('addr-status').textContent='No stops with service found.';return;}
